@@ -47,3 +47,8 @@ class Shuttle(ndb.Model):
 class VehicleServiceMap(ndb.Model):
     vehicle = ndb.StringProperty()
     service = ndb.StringProperty()
+
+    @classmethod
+    def get_all(cls):
+        result = VehicleServiceMap.query().fetch(100)
+        return result

@@ -25,3 +25,4 @@ LONGITUDE = "longitude"
 
 BUS_SERVICE_KEY = "service"
 
+VEHICLE_SERIAL_KEY = "vehicle_serial"

@@ -2,7 +2,6 @@ import requests
 import json
 import settings
 from collections import defaultdict
-from math import sqrt, atan2, sin, cos
 from utils import calculate_distance, match_route_pattern
 from entities import LoginCredential, LoginToken, BusStop, Shuttle, VehicleServiceMap, VehicleBusstopsMap
 
@@ -19,6 +18,10 @@ def hello():
 
 @app.route("/bus_location", methods=['GET'])
 def get_bus_location():
+    """
+    Get moving buses with services number
+    :return:
+    """
     buses = json.loads(get_origin_bus_locations())
     buses = filter_moving_buses(buses)
 
@@ -33,6 +36,10 @@ def get_bus_location():
 
 
 def get_origin_bus_locations():
+    """
+    Get all buses locations.
+    :return:
+    """
     query = LoginToken.query().order(-LoginToken.time)
     token = query.get()
     if token:
@@ -41,6 +48,7 @@ def get_origin_bus_locations():
         if resp.status_code == 200:
             return resp.content
 
+    # Get new token if current token is expired.
     token_id = get_credentials()
     if not token_id:
         return "Invalid login credential"
@@ -50,12 +58,23 @@ def get_origin_bus_locations():
 
 
 def send_bus_location_request(token_id):
+    """
+    Http request to third party API to get all buses
+    :param token_id:
+    :return:
+    """
     payload = {"token": token_id}
     resp = requests.get(settings.BUS_TRACKING_BUS_LOCATION_URL, params=payload)
     return resp
 
 
 def filter_moving_buses(buses):
+    """
+    Filter out stopped buses, for showing only moving buses.
+    If latitude and longitude of a bus doesn't change, it means that bus is not moving.
+    :param buses: list of all running buses
+    :return:
+    """
     app.logger.info("filter moving buses")
     buses_dict = defaultdict(list)
     for bus in buses:
@@ -139,6 +158,11 @@ def filter_moving_buses(buses):
 
 
 def get_shuttle(busstop):
+    """
+    Send http request to shuttle API provider to get shuttle details
+    :param busstop: string, busstop name
+    :return: list of shuttles
+    """
     payload = {'busstopname': busstop}
     resp = requests.get(settings.SHUTTLE_URL, params=payload)
     data = json.loads(resp.content)
@@ -151,6 +175,10 @@ def get_shuttle(busstop):
 
 
 def get_credentials():
+    """
+    Get credential form ndb to get login token.
+    :return:
+    """
     query = LoginCredential.query(LoginCredential.domain == settings.DOMAIN,
                                   LoginCredential.name == settings.USERNAME)
     credential = query.get()

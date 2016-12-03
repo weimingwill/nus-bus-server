@@ -1,4 +1,4 @@
-#cron:
-#- description: calculate bus service and store it in db
-#  url: /calculate_bus_service
-#  schedule: every 5 minutes from 6:30 to 11:30
+cron:
+- description: calculate bus service and store it in db
+  url: /calculate_bus_service
+  schedule: every 1 minutes from 6:30 to 11:30

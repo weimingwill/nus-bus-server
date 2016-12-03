@@ -3,7 +3,8 @@ import json
 import settings
 from collections import defaultdict
 from math import sqrt, atan2, sin, cos
-from entities import LoginCredential, LoginToken, BusStop, Shuttle, VehicleServiceMap
+from utils import calculate_distance, match_route_pattern
+from entities import LoginCredential, LoginToken, BusStop, Shuttle, VehicleServiceMap, VehicleBusstopsMap
 
 from flask import Flask
 
@@ -60,9 +61,8 @@ def filter_moving_buses(buses):
     for bus in buses:
         bus["service"] = ""
         buses_dict[bus[settings.VEHICLE_SERIAL_KEY]].append(bus)
-    app.logger.info("buses_dict: {}".format(str(buses_dict)))
 
-    new_buses = []
+    moving_buses, stopped_buses = [], []
 
     for buses in buses_dict.values():
         i = 0
@@ -73,76 +73,69 @@ def filter_moving_buses(buses):
                 is_moving = True
                 break
         if is_moving:
-            new_buses.append(buses[i + 1])
-    app.logger.info("new buses: {}".format(str(new_buses)))
-    return new_buses
+            moving_buses.append(buses[i + 1])
+        else:
+            stopped_buses.append(buses[i + 1])
+
+    # VehicleBusstopsMap.reset_stopped_buses(stopped_buses)
+    return moving_buses
 
 
-# @app.route("/calculate_bus_service")
+# @app.route("/calculate_bus_service", methods=["GET"])
 # def calculate_bus_service():
 #     """
 #     To calculate bus service number. Need to improve the algorithm
+#     By comparing the busstops a busstop has passed with bus service routine busstops.
 #     :return:
 #     """
 #     buses = json.loads(get_bus_location()[0])
-#     app.logger.info("buses: " + str(buses))
+#     busstops = BusStop.get_busstops()
 #
-#     vehicle_service_dict = {}
-#     busstops = get_busstops()
-#     for busstop in busstops:
-#         shuttles = get_shuttle(busstop.name)
+#     vehicle_busstops = VehicleBusstopsMap.get_all()
+#     vehicle_busstops_dict = VehicleBusstopsMap.entities_to_dict(vehicle_busstops)
+#     updated_busstops_dict = {}
+#
+#     for bus in buses:
+#         vehicle_serial = bus[settings.VEHICLE_SERIAL_KEY]
 #         min_distance = 1000
-#         for bus in buses:
+#         closest_busstop = ""
+#         for busstop in busstops:
 #             distance = calculate_distance(busstop.latitude, busstop.longitude,
 #                                           bus[settings.LATITUDE], bus[settings.LONGITUDE])
-#             for shuttle in shuttles:
-#                 if shuttle.arrivalTime != "-" \
-#                         and (shuttle.arrivalTime == "Arr" or int(shuttle.arrivalTime) < 2) \
-#                         and distance < 10:
-#                     if distance < min_distance:
-#                         min_distance = distance
-#                         vehicle_service_dict.update({bus[settings.VEHICLE_SERIAL_KEY]: shuttle.name})
-#                 else:
-#                     vehicle_service_dict.update({bus[settings.VEHICLE_SERIAL_KEY]: ""})
-#             # if distance < min_distance:
-#             #     min_distance = distance
-#             #     min_arrival_time = 60
-#             #     for shuttle in shuttles:
-#             #         if shuttle.arrivalTime == "Arr":
-#             #             vehicle_service_dict.update({bus[settings.VEHICLE_SERIAL_KEY]: shuttle.name})
-#             #             break
-#             #         elif shuttle.arrivalTime != "-":
-#             #             arrival_time = int(shuttle.arrivalTime)
-#             #             if min_arrival_time > arrival_time:
-#             #                 min_arrival_time = arrival_time
-#             #                 vehicle_service_dict.update({bus[settings.VEHICLE_SERIAL_KEY]: shuttle.name})
+#             if distance < 5 and distance < min_distance:
+#                 min_distance = distance
+#                 closest_busstop = busstop.name
+#         new_vehicle_busstops = [closest_busstop]
+#         if vehicle_serial in vehicle_busstops_dict.keys():
+#             new_vehicle_busstops = vehicle_busstops_dict[vehicle_serial]
+#             new_vehicle_busstops.append(closest_busstop)
 #
-#     app.logger.info("vehicle_service_dict: " + str(vehicle_service_dict))
-#     vehicle_services = VehicleServiceMap.get_all()
-#     if vehicle_services:
-#         app.logger.info("update vehicle service map")
-#         for vehicle, service in vehicle_service_dict.iteritems():
-#             for vehicle_service in vehicle_services:
-#                 if vehicle_service.vehicle == vehicle:
-#                     vehicle_service.service = service
-#                     vehicle_service.put()
-#     else:
-#         app.logger.info("initiate vehicle service map")
-#         for vehicle, service in vehicle_service_dict.iteritems():
-#             vehicle_service = VehicleServiceMap(vehicle=vehicle, service=service)
-#             vehicle_service.put()
+#         new_vehicle_busstops = list(set(new_vehicle_busstops))
+#         updated_busstops_dict[vehicle_serial] = new_vehicle_busstops
+#
+#     app.logger.info("updated_busstops_dict: " + str(updated_busstops_dict))
+#
+#     vehicle_service_dict = {}
+#     for vehicle, busstops in updated_busstops_dict.iteritems():
+#         if len(busstops) < 2:
+#             vehicle_service_dict[vehicle] = ""
+#         else:
+#             bus_services = ""
+#             for service, route_stops in settings.BUS_SERVICE_STOPS_DICT:
+#                 if match_route_pattern(busstops, route_stops):
+#                     if not bus_services:
+#                         bus_services += service
+#                     else:
+#                         bus_services += "/" + service
+#             app.logger.info("result bus services: " + bus_services)
+#             vehicle_service_dict[vehicle] = bus_services
+#
+#     app.logger.info("create or update vehicle busstops map")
+#     app.logger.info("vehicle busstops: {}, updated_busstops_dict: {}".format(str(vehicle_busstops), str(updated_busstops_dict)))
+#     VehicleBusstopsMap.create_or_update(vehicle_busstops, updated_busstops_dict)
+#     app.logger.info("update vehicle service map, vehicle_service_dict: " + str(vehicle_service_dict))
+#     VehicleServiceMap.update(vehicle_service_dict)
 #     return "", 200
-
-
-def get_busstops():
-    resp = requests.get(settings.BUSSTOPS_URL)
-    data = json.loads(resp.content)
-    busstops = data[settings.BUSSTOP_RESULT_KEY][settings.BUSSTOPS_KEY]
-    busstop_list = []
-    for busstop_json in busstops:
-        busstop = BusStop.serialize(busstop_json)
-        busstop_list.append(busstop)
-    return busstop_list
 
 
 def get_shuttle(busstop):
@@ -155,18 +148,6 @@ def get_shuttle(busstop):
         shuttle = Shuttle.serialize(shuttle_json)
         shuttle_list.append(shuttle)
     return shuttle_list
-
-
-def calculate_distance(lat1, lon1, lat2, lon2):
-    R = 6373.0
-    dlon = lon2 - lon1
-    dlat = lat2 - lat1
-
-    a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
-    c = 2 * atan2(sqrt(a), sqrt(1 - a))
-
-    distance = R * c
-    return distance
 
 
 def get_credentials():
